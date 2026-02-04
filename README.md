@@ -1,4 +1,4 @@
-# minutes-converter# Motorcycle Club Minutes Converter
+# Motorcycle Club Minutes Converter
 
 Convert decades of motorcycle club meeting minutes from raw text to standardized JSONL for archival and search.
 
