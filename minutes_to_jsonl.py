@@ -69,13 +69,54 @@ class MeetingMinutes(BaseModel):
 # ==========================================
 # 3. CORE LOGIC
 # ==========================================
+
 def split_into_meetings(text: str) -> List[str]:
     """
     Splits the giant text file into chunks based on common separators.
-    Adjust the regex if your separators are different.
+    Handles both '***' and '---' as well as 'Meeting:'.
     """
-    chunks = re.split(r"\n\s*(?:\*{3,}|-{3,}|Meeting:)\s*", text)
+    # Matches lines with only *** or --- (3 or more), or 'Meeting:' as a separator
+    chunks = re.split(r"\n\s*(?:\*{3,}|-{3,}|Meeting:)\s*\n?", text)
     return [c.strip() for c in chunks if len(c.strip()) > 50]
+
+def standardize_date(date_str: str) -> str:
+    """
+    Converts various date formats (e.g., 'January 21, 2004', 'Oct 6, 1971') to YYYY-MM-DD.
+    Returns empty string if parsing fails.
+    """
+    import datetime
+    import calendar
+
+    # Try common formats
+    formats = [
+        "%B %d, %Y",   # January 21, 2004
+        "%b %d, %Y",   # Jan 21, 2004
+        "%B %d %Y",    # January 21 2004
+        "%b %d %Y",    # Jan 21 2004
+        "%m/%d/%Y",    # 01/21/2004
+        "%Y-%m-%d",    # 2004-01-21
+    ]
+    date_str = date_str.strip()
+    for fmt in formats:
+        try:
+            dt = datetime.datetime.strptime(date_str, fmt)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    # Try to extract month name, day, year manually
+    match = re.match(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", date_str)
+    if match:
+        month = match.group(1)
+        day = int(match.group(2))
+        year = int(match.group(3))
+        try:
+            month_num = list(calendar.month_name).index(month) if month in calendar.month_name else list(calendar.month_abbr).index(month)
+            dt = datetime.date(year, month_num, day)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    return ""
+
 
 
 def run_conversion():
@@ -119,6 +160,9 @@ def run_conversion():
             response = chain.invoke({"minutes": meeting_chunk})
             meeting_dict = response.model_dump()
             meeting_dict["original_text"] = meeting_chunk
+            # Standardize date if present
+            if "date" in meeting_dict and meeting_dict["date"]:
+                meeting_dict["date"] = standardize_date(meeting_dict["date"])
             with open(OUTPUT_FILE, "a", encoding="utf-8") as out_f:
                 out_f.write(json.dumps(meeting_dict) + "\n")
             print(f"      Success: Saved meeting from {meeting_dict['date']}")
